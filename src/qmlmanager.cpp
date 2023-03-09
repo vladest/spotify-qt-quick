@@ -1,71 +1,63 @@
 #include "qmlmanager.hpp"
 
+#include "page/setup.hpp"
+#include "page/main.hpp"
+
+#include "model/home.hpp"
+
+#include <QQmlContext>
+#include <QCoreApplication>
+#include <QQuickStyle>
+
 QmlManager::QmlManager(lib::settings &settings)
-	: appEngine(new QQmlApplicationEngine(this)),
-	settings(settings)
+	: settings(settings)
 {
 	defineTypes();
+
+	QQmlApplicationEngine::connect(&appEngine, &QQmlApplicationEngine::objectCreated,
+		this, &QmlManager::onObjectCreated, Qt::QueuedConnection);
 }
 
 void QmlManager::defineTypes()
 {
 	// spotify-qt-quick
-	appEngine->rootContext()->setContextProperty("AppVersion",
+	appEngine.rootContext()->setContextProperty(QStringLiteral("AppVersion"),
 		QCoreApplication::applicationVersion());
 
 	// spotify-qt-lib
-	appEngine->rootContext()->setContextProperty("LibVersion", LIB_VERSION);
+	appEngine.rootContext()->setContextProperty(QStringLiteral("LibVersion"),
+		QStringLiteral(LIB_VERSION));
 
 	// qt
-	appEngine->rootContext()->setContextProperty("QtVersion", QString("%1.%2")
-		.arg(QT_VERSION_MAJOR, QT_VERSION_MINOR));
+	appEngine.rootContext()->setContextProperty(QStringLiteral("QtVersion"),
+		QString("%1.%2").arg(QT_VERSION_MAJOR, QT_VERSION_MINOR));
 
 	// Custom types
-	addType<Qml::GuiApplication>("Qml.GuiApplication", "GuiApplication");
-	addType<Qml::Settings>("Qml.Settings", "Settings");
+	//addType<Qml::GuiApplication>("Qml.GuiApplication", "GuiApplication");
+	//addType<Qml::Settings>("Qml.Settings", "Settings");
 
 	// Pages
-	addType<Page::Setup>("Page.Setup", "Setup");
+	qmlRegisterType<Page::Setup>("Page.Setup", 1, 0, "Setup");
+	qmlRegisterType<Page::Main>("Page.Main", 1, 0, "Main");
+
+	// Models
+	qmlRegisterType<Model::Home>("Model.Home", 1, 0, "HomeModel");
 }
 
 void QmlManager::load(const QString &url)
 {
-	QQmlApplicationEngine::connect(appEngine, &QQmlApplicationEngine::objectCreated,
-		this, [](QObject *obj, const QUrl &url)
-		{
-			if (obj == nullptr)
-			{
-				lib::log::error("Failed to load: {}",
-					url.toString().toStdString());
-				QCoreApplication::quit();
-			}
-		}, Qt::QueuedConnection);
-
-	appEngine->load(QUrl(url));
+	appEngine.load(QUrl(url));
 }
 
-void QmlManager::setStyle() const
+void QmlManager::setStyle()
 {
-	/*
-	 * TODO
-	 * Dark theme in spotify-qt uses Fusion, while dark theme in
-	 * spotify-qt-quick uses Material. These should probably not
-	 * depend on each other, so force Material on dark theme
-	 * for now
-	 */
-
-	const auto settingsStyle = settings.get_dark_theme()
-		? "Material"
-		: QString::fromStdString(settings.general.style);
-
-	QQuickStyle::setFallbackStyle("Material");
-	QQuickStyle::setStyle(settingsStyle);
+	QQuickStyle::setStyle(QStringLiteral("Material"));
 }
 
 auto QmlManager::setup() -> bool
 {
 	setStyle();
-	load("qrc:/qml/setup.qml");
+	load(QStringLiteral("qrc:/qml/SetupPage.qml"));
 	QCoreApplication::exec();
 
 	return settings.account.access_token.empty()
@@ -75,5 +67,16 @@ auto QmlManager::setup() -> bool
 void QmlManager::main()
 {
 	setStyle();
-	load("qrc:/qml/main.qml");
+	load(QStringLiteral("qrc:/qml/MainPage.qml"));
+}
+
+void QmlManager::onObjectCreated(QObject *object, const QUrl &url)
+{
+	if (object != nullptr)
+	{
+		return;
+	}
+
+	lib::log::error("Failed to load: {}", url.toString().toStdString());
+	QCoreApplication::quit();
 }
